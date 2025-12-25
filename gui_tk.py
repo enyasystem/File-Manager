@@ -7,6 +7,7 @@ Scan / Organize / Dedupe / Report / Undo actions using the existing
 import threading
 from pathlib import Path
 import json
+import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -68,6 +69,11 @@ def build_ui():
     out_text = tk.Text(frm, width=100, height=20)
     out_text.grid(row=5, column=0, columnspan=3, pady=(8,0))
 
+    progress = ttk.Progressbar(frm, mode='determinate', length=500)
+    progress.grid(row=6, column=0, columnspan=3, pady=(8,0))
+    progress['value'] = 0
+    progress['maximum'] = 100
+
     def append(msg):
         out_text.insert(tk.END, str(msg) + "\n")
         out_text.see(tk.END)
@@ -76,10 +82,19 @@ def build_ui():
     from file_manager import scanner, organizer, deduper, reporter
 
     def on_scan_done(ok, payload):
+        try:
+            progress.stop()
+        except Exception:
+            pass
+        try:
+            progress['value'] = 0
+        except Exception:
+            pass
         if not ok:
             append(f"Scan error: {payload}")
             return
-        append(f"Scan completed: {len(payload)} items")
+        count = len(payload)
+        append(f"completed: {count} items")
         try:
             append(json.dumps(payload[:5], indent=2))
         except Exception:
@@ -88,12 +103,43 @@ def build_ui():
     def do_scan():
         paths = [p.strip() for p in src_var.get().split(',') if p.strip()]
         items = []
+        # fast count pass to set progress maximum
+        total = 0
+        try:
+            for p in paths:
+                pp = Path(p)
+                if pp.is_file():
+                    total += 1
+                elif pp.is_dir():
+                    for _root, _dirs, files in os.walk(pp):
+                        total += len(files)
+        except Exception:
+            total = 0
+
+        try:
+            if total > 0:
+                root.after(0, lambda: progress.config(mode='determinate', maximum=total))
+            else:
+                root.after(0, lambda: progress.config(mode='indeterminate'))
+                root.after(0, lambda: progress.start())
+        except Exception:
+            pass
+
+        done = 0
         for p in paths:
             for it in scanner.scan_paths([p], recursive=rec_var.get()):
                 items.append(it)
+                done += 1
+                if total > 0:
+                    try:
+                        root.after(0, lambda v=done: progress.config(value=v))
+                    except Exception:
+                        pass
         return items
 
     def on_organize_done(ok, payload):
+        progress = ttk.Progressbar(frm, mode='indeterminate', length=500)
+        progress.grid(row=6, column=0, columnspan=3, pady=(8,0))
         if not ok:
             append(f"Organize error: {payload}")
             return
@@ -172,5 +218,12 @@ def build_ui():
 
 
 if __name__ == '__main__':
-    app = build_ui()
-    app.mainloop()
+    try:
+        app = build_ui()
+        app.mainloop()
+    except KeyboardInterrupt:
+        try:
+            app.destroy()
+        except Exception:
+            pass
+        print('\nGUI interrupted, exiting.')
