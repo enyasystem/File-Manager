@@ -71,6 +71,61 @@ def build_ui():
     mode_var = tk.StringVar(value="move")
     mode_cb = ttk.Combobox(frm, textvariable=mode_var, values=["move", "copy", "hardlink", "index"], state="readonly", width=10)
     mode_cb.grid(row=3, column=3, sticky="w")
+    # Help button for modes
+    def show_mode_help():
+        help_win = tk.Toplevel(root)
+        help_win.title('Mode help')
+        help_win.transient(root)
+        help_win.grab_set()
+        txt = tk.Text(help_win, width=80, height=16, wrap='word')
+        txt.grid(row=0, column=0, padx=8, pady=8)
+        help_text = (
+            "Modes:\n\n"
+            "move: physically move files into the target folders. Undo will attempt to move them back.\n\n"
+            "copy: copy files into the target folders, leaving originals in place. Undo will remove the copied targets.\n\n"
+            "hardlink: create a filesystem hardlink to the original (same volume only). If hardlink creation fails, the operation may fall back to copy. Undo will remove the hardlink.\n\n"
+            "index: do not move files; instead generate index/manifest files referencing originals (backend pending).\n\n"
+            "Safety notes:\n"
+            "- Dry run mode shows a preview and does not change files. Always preview before applying.\n"
+            "- Hardlinks are only available on the same filesystem/volume; on Windows, admin permissions are not required for NTFS hardlinks but some restrictions apply.\n"
+        )
+        txt.insert(tk.END, help_text)
+        txt.config(state='disabled')
+        btn = ttk.Button(help_win, text='OK', command=help_win.destroy)
+        btn.grid(row=1, column=0, sticky='e', padx=8, pady=(0,8))
+
+    help_btn = ttk.Button(frm, text='?', width=2, command=show_mode_help)
+    help_btn.grid(row=3, column=4, sticky='w')
+
+    # lightweight tooltip for mode combobox
+    class _Tooltip:
+        def __init__(self, widget, text):
+            self.widget = widget
+            self.text = text
+            self.tip = None
+            widget.bind('<Enter>', self._on_enter)
+            widget.bind('<Leave>', self._on_leave)
+
+        def _on_enter(self, _):
+            if self.tip:
+                return
+            x = self.widget.winfo_rootx() + 20
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+            self.tip = tw = tk.Toplevel(self.widget)
+            tw.wm_overrideredirect(True)
+            tw.wm_geometry(f'+{x}+{y}')
+            lbl = ttk.Label(tw, text=self.text, background='#ffffe0', relief='solid', borderwidth=1)
+            lbl.pack()
+
+        def _on_leave(self, _):
+            if self.tip:
+                try:
+                    self.tip.destroy()
+                except Exception:
+                    pass
+                self.tip = None
+
+    _Tooltip(mode_cb, 'Choose how files will be handled: move/copy/hardlink/index (preview before apply)')
     # Info / warning for selected mode
     mode_info_var = tk.StringVar(value="")
     mode_info_lbl = ttk.Label(frm, textvariable=mode_info_var, foreground="orange")
