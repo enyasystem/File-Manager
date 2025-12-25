@@ -1,9 +1,34 @@
 ﻿"""Utility helpers"""
 from pathlib import Path
+import shutil
+from typing import Tuple
 
 def safe_move(src: Path, dst: Path):
     dst.parent.mkdir(parents=True, exist_ok=True)
     return src.replace(dst)
+
+
+def safe_copy(src: Path, dst: Path) -> Tuple[Path, Path]:
+    """Copy `src` to `dst`, creating parent dirs and avoiding name collisions.
+
+    Returns a tuple (src_path, dst_path) where dst_path may be a renamed
+    destination if a collision was avoided.
+    """
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    # if destination exists, append an index suffix
+    if dst.exists():
+        base = dst.stem
+        suffix = dst.suffix
+        parent = dst.parent
+        i = 1
+        while True:
+            candidate = parent / f"{base}_{i}{suffix}"
+            if not candidate.exists():
+                dst = candidate
+                break
+            i += 1
+    shutil.copy2(str(src), str(dst))
+    return src, dst
 
 def human_size(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
