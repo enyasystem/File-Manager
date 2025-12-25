@@ -749,16 +749,31 @@ def undo_moves(log_path: Path, dry_run: bool = False) -> List[Dict]:
             results.append({"src": str(src), "dst": str(dst), "status": "dry-run"})
             continue
         try:
-            if mode == "copy":
+            if mode in ("copy", "hardlink"):
+                # For copy and hardlink modes, undo means removing the target link/file.
                 try:
                     dst.unlink()
-                    results.append({"src": str(src), "dst": str(dst), "status": "deleted_copy"})
+                    status = "deleted_copy" if mode == "copy" else "deleted_hardlink"
+                    results.append({"src": str(src), "dst": str(dst), "status": status})
                 except FileNotFoundError:
                     results.append({"src": str(src), "dst": str(dst), "status": "missing"})
                 except Exception as e:
                     results.append({"src": str(src), "dst": str(dst), "status": "error", "error": str(e)})
+            elif mode == "index":
+                # Index mode: dst may be a generated file or folder; remove it.
+                try:
+                    if dst.is_file():
+                        dst.unlink()
+                        results.append({"src": str(src), "dst": str(dst), "status": "deleted_index"})
+                    elif dst.is_dir():
+                        shutil.rmtree(str(dst))
+                        results.append({"src": str(src), "dst": str(dst), "status": "deleted_index_dir"})
+                    else:
+                        results.append({"src": str(src), "dst": str(dst), "status": "missing"})
+                except Exception as e:
+                    results.append({"src": str(src), "dst": str(dst), "status": "error", "error": str(e)})
             else:
-                # move the file back to original location (move mode)
+                # move (default): move the file back to original location
                 dest_restore = src
                 if dest_restore.exists():
                     base = dest_restore.stem
