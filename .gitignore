@@ -8,3 +8,9 @@ __pycache__/
 
 .vscode/
 .idea/
+
+.json  
+*.log
+*.sqlite3
+
+*.json

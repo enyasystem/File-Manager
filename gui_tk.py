@@ -233,6 +233,101 @@ def build_ui():
             return organizer.organize_by_type(items, targ, dry_run=dry_var.get())
         return organizer.organize_by_date(items, targ, dry_run=dry_var.get())
 
+    # Preview/apply flow for organize: run a dry-run preview first, show modal,
+    # then apply if user confirms.
+    def show_preview_window(actions, title='Preview'):
+        win = tk.Toplevel(root)
+        win.title(title)
+        win.transient(root)
+        win.grab_set()
+
+        ttk.Label(win, text=f"Operation: Organize (preview)").grid(row=0, column=0, sticky='w', padx=8, pady=(8,0))
+        ttk.Label(win, text=f"Actions: {len(actions)}").grid(row=1, column=0, sticky='w', padx=8)
+
+        txt = tk.Text(win, width=100, height=20)
+        txt.grid(row=2, column=0, padx=8, pady=8)
+        try:
+            txt.insert(tk.END, json.dumps(actions[:50], indent=2))
+        except Exception:
+            txt.insert(tk.END, str(actions[:50]))
+        txt.config(state='disabled')
+
+        confirm_var = tk.BooleanVar(value=False)
+        chk = ttk.Checkbutton(win, text="I understand this will move files when applied", variable=confirm_var)
+        chk.grid(row=3, column=0, sticky='w', padx=8)
+
+        decision = {'confirmed': False}
+
+        def do_proceed():
+            decision['confirmed'] = True
+            win.destroy()
+
+        def do_cancel():
+            win.destroy()
+
+        btn_frame = ttk.Frame(win)
+        btn_frame.grid(row=4, column=0, sticky='e', padx=8, pady=(0,8))
+        btn_proceed = ttk.Button(btn_frame, text='Proceed', command=do_proceed)
+        btn_proceed.grid(row=0, column=0, padx=(0,8))
+        btn_cancel = ttk.Button(btn_frame, text='Cancel', command=do_cancel)
+        btn_cancel.grid(row=0, column=1)
+
+        # disable proceed until confirmed
+        def toggle_proceed(*_):
+            try:
+                btn_proceed.config(state='normal' if confirm_var.get() else 'disabled')
+            except Exception:
+                pass
+
+        confirm_var.trace_add('write', toggle_proceed)
+        toggle_proceed()
+
+        root.wait_window(win)
+        return decision['confirmed']
+
+    def do_organize_preview():
+        # identical to do_organize but force dry_run=True
+        from file_manager import scanner as sc
+        paths = [p.strip() for p in src_var.get().split(',') if p.strip()]
+        items = []
+        for p in paths:
+            for it in sc.scan_paths([p], recursive=rec_var.get()):
+                items.append(it)
+        targ = Path(tgt_var.get() or '.')
+        if by_var.get() == 'type':
+            return organizer.organize_by_type(items, targ, dry_run=True)
+        return organizer.organize_by_date(items, targ, dry_run=True)
+
+    def do_organize_apply():
+        # perform actual organize (non-dry)
+        from file_manager import scanner as sc
+        paths = [p.strip() for p in src_var.get().split(',') if p.strip()]
+        items = []
+        for p in paths:
+            for it in sc.scan_paths([p], recursive=rec_var.get()):
+                items.append(it)
+        targ = Path(tgt_var.get() or '.')
+        if by_var.get() == 'type':
+            return organizer.organize_by_type(items, targ, dry_run=False)
+        return organizer.organize_by_date(items, targ, dry_run=False)
+
+    def on_organize_preview_done(ok, payload):
+        # called after preview is ready
+        set_buttons_enabled(True)
+        stop_progress()
+        if not ok:
+            append(f"Organize preview error: {payload}")
+            return
+        actions = payload
+        confirmed = show_preview_window(actions, title='Organize Preview')
+        if not confirmed:
+            append('Organize cancelled by user')
+            return
+        # user confirmed; run actual organize in background
+        set_buttons_enabled(False)
+        start_progress('indeterminate')
+        _run_background(do_organize_apply, on_organize_done)
+
     def on_dedupe_done(ok, payload):
         stop_progress()
         set_buttons_enabled(True)
@@ -250,6 +345,41 @@ def build_ui():
     def do_dedupe():
         paths = [p.strip() for p in src_var.get().split(',') if p.strip()]
         return deduper.find_duplicates(paths)
+
+    # Dedupe preview/apply flow
+    def do_dedupe_preview():
+        paths = [p.strip() for p in src_var.get().split(',') if p.strip()]
+        return deduper.find_duplicates(paths)
+
+    def do_dedupe_apply(groups):
+        # decide files to delete using default strategy
+        to_delete = []
+        try:
+            from file_manager import deduper as dd
+            for g in groups:
+                to_delete.extend(dd.choose_to_delete(g, strategy='keep-first'))
+            # perform safe delete (move to trash)
+            res = dd.delete_files(to_delete, dry_run=False)
+            return res
+        except Exception as e:
+            return str(e)
+
+    def on_dedupe_preview_done(ok, payload):
+        stop_progress()
+        set_buttons_enabled(True)
+        if not ok:
+            append(f"Dedupe preview error: {payload}")
+            return
+        groups = payload
+        # show preview modal
+        confirmed = show_preview_window(groups, title='Dedupe Preview')
+        if not confirmed:
+            append('Dedupe cancelled by user')
+            return
+        # user confirmed: run deletion in background
+        set_buttons_enabled(False)
+        start_progress('indeterminate')
+        _run_background(lambda: do_dedupe_apply(groups), lambda ok, p: append(json.dumps(p, indent=2) if ok else f"Dedupe apply error: {p}"))
 
     def on_report_done(ok, payload):
         stop_progress()
@@ -282,6 +412,31 @@ def build_ui():
         except Exception:
             pass
 
+    # Undo preview/apply flow
+    def do_undo_preview():
+        logp = src_var.get().strip()
+        return organizer.undo_moves(Path(logp), dry_run=True)
+
+    def do_undo_apply():
+        logp = src_var.get().strip()
+        return organizer.undo_moves(Path(logp), dry_run=False)
+
+    def on_undo_preview_done(ok, payload):
+        stop_progress()
+        set_buttons_enabled(True)
+        if not ok:
+            append(f"Undo preview error: {payload}")
+            return
+        actions = payload
+        confirmed = show_preview_window(actions, title='Undo Preview')
+        if not confirmed:
+            append('Undo cancelled by user')
+            return
+        # perform undo
+        set_buttons_enabled(False)
+        start_progress('indeterminate')
+        _run_background(do_undo_apply, on_undo_done)
+
     def do_undo():
         logp = src_var.get().strip()
         return organizer.undo_moves(Path(logp), dry_run=dry_var.get())
@@ -289,13 +444,13 @@ def build_ui():
     # buttons with wrappers that start progress and disable buttons while running
     b_scan = ttk.Button(btn_frame, text="Scan", command=lambda: (set_buttons_enabled(False), _run_background(do_scan, on_scan_done)))
     b_scan.grid(row=0, column=0)
-    b_org = ttk.Button(btn_frame, text="Organize", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_organize, on_organize_done)))
+    b_org = ttk.Button(btn_frame, text="Organize", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_organize_preview, on_organize_preview_done)))
     b_org.grid(row=0, column=1)
-    b_ded = ttk.Button(btn_frame, text="Dedupe", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_dedupe, on_dedupe_done)))
+    b_ded = ttk.Button(btn_frame, text="Dedupe", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_dedupe_preview, on_dedupe_preview_done)))
     b_ded.grid(row=0, column=2)
     b_rep = ttk.Button(btn_frame, text="Report", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_report, on_report_done)))
     b_rep.grid(row=0, column=3)
-    b_undo = ttk.Button(btn_frame, text="Undo", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_undo, on_undo_done)))
+    b_undo = ttk.Button(btn_frame, text="Undo", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_undo_preview, on_undo_preview_done)))
     b_undo.grid(row=0, column=4)
 
     buttons.extend([b_scan, b_org, b_ded, b_rep, b_undo])
