@@ -126,6 +126,40 @@ def build_ui():
                 self.tip = None
 
     _Tooltip(mode_cb, 'Choose how files will be handled: move/copy/hardlink/index (preview before apply)')
+
+    # How-To guide modal
+    def show_howto():
+        hw = tk.Toplevel(root)
+        hw.title('How To: File Manager')
+        hw.transient(root)
+        hw.grab_set()
+        txt = tk.Text(hw, width=100, height=22, wrap='word')
+        txt.grid(row=0, column=0, padx=8, pady=8)
+        guide = (
+            "Quick How-To:\n\n"
+            "1) Enter Source Paths (one or more, comma-separated) and pick a Target Root.\n"
+            "2) Choose `Organize by` -> `type` or `date`.\n"
+            "3) Select `Mode`:\n"
+            "   - move: physically move files (undo moves them back).\n"
+            "   - copy: copy files to target (undo deletes copies).\n            - hardlink: create hardlinks (same-volume only).\n"
+            "   - index: generate index files referencing originals (no move).\n"
+            "4) Keep `Dry run` checked for a safe preview. Click `Organize Preview`.\n"
+            "5) In the preview modal: review Actions, estimated disk usage, and the largest files. Check the confirmation box and click Proceed to apply.\n"
+            "6) After apply a log `fm_organize_*.json` will be written to the Target Root; use it with Undo to revert.\n\n"
+            "Tips:\n"
+            "- Always run a dry run first.\n"
+            "- Use `Top N` to inspect the largest files that will be touched.\n"
+            "- Hardlinks only work on the same filesystem; if they fail the tool may fall back to copying.\n"
+            "- If files disappear unexpectedly, check the latest organizer log under your Target Root and run the undo flow.\n\n"
+            "More info: see README.md in the project root for examples and safety notes."
+        )
+        txt.insert(tk.END, guide)
+        txt.config(state='disabled')
+        btn = ttk.Button(hw, text='Close', command=hw.destroy)
+        btn.grid(row=1, column=0, sticky='e', padx=8, pady=(0,8))
+
+    howto_btn = ttk.Button(frm, text='How To', command=show_howto)
+    howto_btn.grid(row=3, column=5, sticky='w', padx=(6,0))
     # Info / warning for selected mode
     mode_info_var = tk.StringVar(value="")
     mode_info_lbl = ttk.Label(frm, textvariable=mode_info_var, foreground="orange")
@@ -337,8 +371,20 @@ def build_ui():
         win.title(title)
         win.transient(root)
         win.grab_set()
-
         ttk.Label(win, text=f"Operation: Organize (preview)").grid(row=0, column=0, sticky='w', padx=8, pady=(8,0))
+        # contextual help: summarize selected Mode's effect
+        try:
+            sel_mode = mode_var.get()
+            mode_msgs = {
+                'move': 'Move: files will be moved into target folders; undo moves them back.',
+                'copy': 'Copy: files will be copied to target; undo deletes the copies.',
+                'hardlink': 'Hardlink: create filesystem hardlinks (same-volume). Fallback to copy if unsupported.',
+                'index': 'Index: generate manifest/index files referencing originals (no move).'
+            }
+            msg = mode_msgs.get(sel_mode, '')
+            ttk.Label(win, text=f"Mode: {sel_mode} - {msg}", wraplength=700).grid(row=0, column=1, sticky='w', padx=8, pady=(8,0))
+        except Exception:
+            pass
         ttk.Label(win, text=f"Actions: {len(actions)}").grid(row=1, column=0, sticky='w', padx=8)
         try:
             from file_manager.utils import estimate_size, human_size
