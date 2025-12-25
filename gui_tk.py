@@ -201,6 +201,28 @@ def build_ui():
     date_cb = ttk.Combobox(frm, textvariable=date_src_var, values=['ctime', 'mtime', 'exif'], state='readonly', width=10)
     date_cb.grid(row=5, column=1, sticky='w')
 
+    # Month/year selection for targeted month grouping
+    month_enable_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(frm, text='Group by selected month', variable=month_enable_var).grid(row=5, column=2, sticky='w')
+    month_names = ["","January","February","March","April","May","June","July","August","September","October","November","December"]
+    month_var = tk.StringVar(value="12")
+    month_cb = ttk.Combobox(frm, textvariable=month_var, values=month_names[1:], state='readonly', width=10)
+    month_cb.grid(row=5, column=3, sticky='w')
+    year_var = tk.IntVar(value=datetime.now().year)
+    year_spin = ttk.Spinbox(frm, from_=1970, to=2100, textvariable=year_var, width=6)
+    year_spin.grid(row=5, column=4, sticky='w')
+
+    # Size-threshold bucket options
+    size_enable_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(frm, text='Move files >= (MB):', variable=size_enable_var).grid(row=6, column=0, sticky='w')
+    size_mb_var = tk.IntVar(value=1000)
+    size_spin = ttk.Spinbox(frm, from_=1, to=1048576, textvariable=size_mb_var, width=8)
+    size_spin.grid(row=6, column=1, sticky='w')
+    size_folder_var = tk.StringVar(value='Large')
+    ttk.Label(frm, text='Folder name:').grid(row=6, column=2, sticky='e')
+    size_folder_entry = ttk.Entry(frm, textvariable=size_folder_var, width=20)
+    size_folder_entry.grid(row=6, column=3, columnspan=2, sticky='w')
+
     out_text = tk.Text(frm, width=100, height=20)
     out_text.grid(row=5, column=0, columnspan=3, pady=(8, 0))
 
@@ -490,9 +512,30 @@ def build_ui():
                 items.append(it)
         targ = Path(tgt_var.get() or '.')
         sel_mode = mode_var.get()
+        # compute month/year params
+        sel_month = None
+        sel_year = None
+        if month_enable_var.get():
+            try:
+                sel_month = month_cb.current() + 1 if month_cb.current() >= 0 else int(month_var.get())
+                sel_year = int(year_var.get())
+            except Exception:
+                sel_month = None
+                sel_year = None
+        size_mb = int(size_mb_var.get()) if size_enable_var.get() else None
+        size_folder = size_folder_var.get() if size_enable_var.get() else 'Large'
         if by_var.get() == 'type':
             return organizer.organize_by_type(items, targ, dry_run=True, mode=sel_mode)
-        return organizer.organize_by_date(items, targ, dry_run=True, mode=sel_mode)
+        return organizer.organize_by_date(
+            items,
+            targ,
+            dry_run=True,
+            mode=sel_mode,
+            selected_month=sel_month,
+            selected_year=sel_year,
+            size_threshold_mb=size_mb,
+            size_folder_name=size_folder,
+        )
 
     def do_organize_apply():
         # perform actual organize (non-dry)
@@ -504,9 +547,29 @@ def build_ui():
                 items.append(it)
         targ = Path(tgt_var.get() or '.')
         sel_mode = mode_var.get()
+        sel_month = None
+        sel_year = None
+        if month_enable_var.get():
+            try:
+                sel_month = month_cb.current() + 1 if month_cb.current() >= 0 else int(month_var.get())
+                sel_year = int(year_var.get())
+            except Exception:
+                sel_month = None
+                sel_year = None
+        size_mb = int(size_mb_var.get()) if size_enable_var.get() else None
+        size_folder = size_folder_var.get() if size_enable_var.get() else 'Large'
         if by_var.get() == 'type':
             return organizer.organize_by_type(items, targ, dry_run=False, mode=sel_mode)
-        return organizer.organize_by_date(items, targ, dry_run=False, mode=sel_mode)
+        return organizer.organize_by_date(
+            items,
+            targ,
+            dry_run=False,
+            mode=sel_mode,
+            selected_month=sel_month,
+            selected_year=sel_year,
+            size_threshold_mb=size_mb,
+            size_folder_name=size_folder,
+        )
 
     def on_organize_preview_done(ok, payload):
         # called after preview is ready
