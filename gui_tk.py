@@ -74,10 +74,14 @@ def build_ui():
     out_text = tk.Text(frm, width=100, height=20)
     out_text.grid(row=5, column=0, columnspan=3, pady=(8, 0))
 
-    progress = ttk.Progressbar(frm, mode='determinate', length=500)
-    progress.grid(row=6, column=0, columnspan=3, pady=(8, 0))
+    progress = ttk.Progressbar(frm, mode='determinate', length=460)
+    progress.grid(row=6, column=0, columnspan=2, pady=(8, 0), sticky='w')
     progress['value'] = 0
     progress['maximum'] = 100
+
+    percent_var = tk.StringVar(value='')
+    percent_label = ttk.Label(frm, textvariable=percent_var, width=6)
+    percent_label.grid(row=6, column=2, pady=(8, 0), sticky='w')
 
     buttons = []
 
@@ -100,15 +104,23 @@ def build_ui():
             if mode == 'determinate' and maximum:
                 progress.config(mode='determinate', maximum=maximum)
                 progress['value'] = 0
+                percent_var.set('0%')
             else:
                 progress.config(mode='indeterminate')
                 progress.start(50)
+                percent_var.set('')
         except Exception:
             pass
 
     def stop_progress():
         try:
             progress.stop()
+        except Exception:
+            pass
+        try:
+            # when stopping, if determinate show 100%
+            if progress['mode'] == 'determinate' and progress['maximum']:
+                percent_var.set('100%')
         except Exception:
             pass
 
@@ -138,6 +150,12 @@ def build_ui():
             append(f"Scan saved: {str(outp)}")
         except Exception as e:
             append(f"Failed to save scan: {e}")
+        finally:
+            # ensure percent shows 100% on done
+            try:
+                percent_var.set('100%')
+            except Exception:
+                pass
 
     def do_scan():
         paths = [p.strip() for p in src_var.get().split(',') if p.strip()]
@@ -170,7 +188,11 @@ def build_ui():
                 done += 1
                 if total > 0:
                     try:
+                        # update bar value
                         root.after(0, lambda v=done: progress.config(value=v))
+                        # update percent label
+                        pct = int(done / total * 100) if total else 0
+                        root.after(0, lambda p=pct: percent_var.set(f"{p}%"))
                     except Exception:
                         pass
         return items
