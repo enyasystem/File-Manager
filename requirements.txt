@@ -1,3 +1,4 @@
+pyinstaller
 PySimpleGUI
 Pillow
 mutagen

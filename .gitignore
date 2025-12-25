@@ -19,3 +19,77 @@ __pycache__/
 *.pyc
 *.pyo
 *_pycache__
+
+# Ignore database files
+*.sqlite3
+*.db
+*.db-journal
+*.log
+
+# Ignore environment files
+.env
+.venv/
+.env.local
+.env.*.local
+
+# Ignore IDE and editor folders
+.vscode/
+.idea/
+*.sublime-project
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# Ignore build and distribution folders
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Ignore coverage reports
+htmlcov/
+.coverage
+.coverage.*
+.nox/
+
+# Ignore test output
+.pytest_cache/
+.tox/
+.nox/
+.pytest_cache/
+.tox/
+.nox/
+.pytest_cache/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+.ipynb_checkpoints/
+# Ignore temporary files
+*~
+*.swp
+*.swo
+
+# Ignore compiled files
+*.class
+*.o
+*.so
+*.dll
+*.exe
+*.out
+*.obj
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Ignore JSON files
+*.json
+*.json
+*.json
+*.json
+
+# Ignore SQLite database files
