@@ -650,7 +650,11 @@ def build_ui():
     b_undo = ttk.Button(btn_frame, text="Undo", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_undo_preview, on_undo_preview_done)))
     b_undo.grid(row=0, column=4)
 
-    buttons.extend([b_scan, b_org, b_ded, b_rep, b_undo])
+    # Help button (visible in main toolbar) to open the How-To guide
+    b_help = ttk.Button(btn_frame, text="Help", command=show_howto)
+    b_help.grid(row=0, column=5, padx=(6, 0))
+
+    buttons.extend([b_scan, b_org, b_ded, b_rep, b_undo, b_help])
 
     return root
 
