@@ -249,6 +249,12 @@ def build_ui():
 
         ttk.Label(win, text=f"Operation: Organize (preview)").grid(row=0, column=0, sticky='w', padx=8, pady=(8,0))
         ttk.Label(win, text=f"Actions: {len(actions)}").grid(row=1, column=0, sticky='w', padx=8)
+        try:
+            from file_manager.utils import estimate_size, human_size
+            size_bytes = estimate_size(actions)
+            ttk.Label(win, text=f"Estimated disk usage: {human_size(size_bytes)}").grid(row=1, column=1, sticky='w', padx=8)
+        except Exception:
+            pass
 
         txt = tk.Text(win, width=100, height=20)
         txt.grid(row=2, column=0, padx=8, pady=8)

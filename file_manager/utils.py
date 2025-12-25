@@ -36,3 +36,33 @@ def human_size(n: int) -> str:
             return f"{n:.1f}{unit}"
         n /= 1024
     return f"{n:.1f}PB"
+
+
+def estimate_size(items) -> int:
+    """Estimate total size in bytes for a list of file-like items.
+
+    `items` may be:
+    - a list of `pathlib.Path` or string paths
+    - a list of dicts containing a `path` or `src` key (organizer/deduper actions)
+
+    Missing files are ignored and contribute 0.
+    """
+    total = 0
+    for it in items or []:
+        p = None
+        if isinstance(it, dict):
+            if "path" in it:
+                p = it.get("path")
+            elif "src" in it:
+                p = it.get("src")
+        else:
+            p = it
+        if p is None:
+            continue
+        try:
+            path = Path(p)
+            if path.exists() and path.is_file():
+                total += path.stat().st_size
+        except Exception:
+            continue
+    return int(total)
