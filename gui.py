@@ -30,7 +30,17 @@ def main():
 
     from file_manager import scanner, organizer, deduper, reporter
 
-    sg.theme("DefaultNoMoreNagging")
+    # Set a theme defensively to avoid attribute differences across PySimpleGUI versions
+    try:
+        if hasattr(sg, 'theme'):
+            sg.theme("DefaultNoMoreNagging")
+        elif hasattr(sg, 'theme_set'):
+            sg.theme_set("DefaultNoMoreNagging")
+        elif hasattr(sg, 'theme_default'):
+            sg.theme_default()
+    except Exception:
+        # Ignore theme errors; proceed with defaults
+        pass
 
     layout = [
         [sg.Text("Source Paths (comma-separated):"), sg.Input(key="-PATHS-", size=(60,1)), sg.FolderBrowse(button_text="Browse")],
