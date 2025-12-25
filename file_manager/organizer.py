@@ -191,12 +191,10 @@ def _unique_dest(dest: Path) -> Path:
         i += 1
 
 
-def _record_action(actions: List[Dict], src: Path, dst: Path) -> None:
-    actions.append({
-        "src": str(src),
-        "dst": str(dst),
-        "time": datetime.utcnow().isoformat() + "Z",
-    })
+def _record_action(actions: List[Dict], src: Path, dst: Path, **extra) -> None:
+    entry = {"src": str(src), "dst": str(dst), "time": datetime.utcnow().isoformat() + "Z"}
+    entry.update(extra)
+    actions.append(entry)
 
 
 def _write_log(actions: List[Dict], target_root: Path) -> Path:
@@ -497,11 +495,12 @@ def organize_by_type(files: List[Dict], target_root: Path, dry_run: bool = True)
                 results.append({"src": str(src), "dst": str(dst), "status": "error", "error": str(e)})
         return results
 
-def organize_by_type(files: List[Dict], target_root: Path, dry_run: bool = True) -> List[Dict]:
+def organize_by_type(files: List[Dict], target_root: Path, dry_run: bool = True, mode: str = "move") -> List[Dict]:
     """Organize files into subfolders by extension.
 
-    Returns list of actions (dicts). If not dry_run, performs moves and writes a log
-    under the target root and returns the log path in the last action as 'log'.
+    Returns list of actions (dicts). Each action includes a `mode` field.
+    If not dry_run, performs moves and writes a log under the target root
+    and returns the log path in the last action as 'log'.
     """
     actions: List[Dict] = []
     target_root.mkdir(parents=True, exist_ok=True)
@@ -511,35 +510,50 @@ def organize_by_type(files: List[Dict], target_root: Path, dry_run: bool = True)
         dest_dir = target_root / ext
         dest = dest_dir / src.name
         if dry_run:
-            _record_action(actions, src, dest)
-        else:
+            _record_action(actions, src, dest, status="dry-run", mode=mode)
+            continue
+        if not src.exists():
+            _record_action(actions, src, dest, status="missing", mode=mode)
+            continue
+        try:
             srcp, dstp = _do_move(src, dest)
-            _record_action(actions, srcp, dstp)
+            _record_action(actions, srcp, dstp, status="moved", mode=mode)
+        except Exception as e:
+            _record_action(actions, src, dest, status="error", error=str(e), mode=mode)
     if not dry_run and actions:
         logp = _write_log(actions, target_root)
         actions.append({"log": str(logp)})
     return actions
 
 
-def organize_by_date(files: List[Dict], target_root: Path, dry_run: bool = True) -> List[Dict]:
+def organize_by_date(files: List[Dict], target_root: Path, dry_run: bool = True, mode: str = "move") -> List[Dict]:
     """Organize files into year/month folders based on creation time.
 
-    Same return semantics as `organize_by_type`.
+    Same return semantics as `organize_by_type`. Each action includes `mode`.
     """
     actions: List[Dict] = []
     target_root.mkdir(parents=True, exist_ok=True)
     for f in files:
         src = Path(f["path"])
-        t = time.localtime(f.get("ctime", src.stat().st_ctime))
+        try:
+            t = time.localtime(f.get("ctime", src.stat().st_ctime))
+        except Exception:
+            t = time.localtime(src.stat().st_ctime)
         year = t.tm_year
         month = f"{t.tm_mon:02d}"
         dest_dir = target_root / str(year) / month
         dest = dest_dir / src.name
         if dry_run:
-            _record_action(actions, src, dest)
-        else:
+            _record_action(actions, src, dest, status="dry-run", mode=mode)
+            continue
+        if not src.exists():
+            _record_action(actions, src, dest, status="missing", mode=mode)
+            continue
+        try:
             srcp, dstp = _do_move(src, dest)
-            _record_action(actions, srcp, dstp)
+            _record_action(actions, srcp, dstp, status="moved", mode=mode)
+        except Exception as e:
+            _record_action(actions, src, dest, status="error", error=str(e), mode=mode)
     if not dry_run and actions:
         logp = _write_log(actions, target_root)
         actions.append({"log": str(logp)})

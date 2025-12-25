@@ -66,6 +66,11 @@ def build_ui():
     by_var = tk.StringVar(value="type")
     by_cb = ttk.Combobox(frm, textvariable=by_var, values=["type", "date"], state="readonly", width=10)
     by_cb.grid(row=3, column=1, sticky="w")
+    # Mode selector for organize operations
+    ttk.Label(frm, text="Mode:").grid(row=3, column=2, sticky="w")
+    mode_var = tk.StringVar(value="move")
+    mode_cb = ttk.Combobox(frm, textvariable=mode_var, values=["move", "copy", "hardlink", "index"], state="readonly", width=10)
+    mode_cb.grid(row=3, column=3, sticky="w")
 
     # Buttons
     btn_frame = ttk.Frame(frm)
@@ -229,9 +234,10 @@ def build_ui():
             for it in sc.scan_paths([p], recursive=rec_var.get()):
                 items.append(it)
         targ = Path(tgt_var.get() or '.')
+        sel_mode = mode_var.get()
         if by_var.get() == 'type':
-            return organizer.organize_by_type(items, targ, dry_run=dry_var.get())
-        return organizer.organize_by_date(items, targ, dry_run=dry_var.get())
+            return organizer.organize_by_type(items, targ, dry_run=dry_var.get(), mode=sel_mode)
+        return organizer.organize_by_date(items, targ, dry_run=dry_var.get(), mode=sel_mode)
 
     # Preview/apply flow for organize: run a dry-run preview first, show modal,
     # then apply if user confirms.
@@ -294,9 +300,10 @@ def build_ui():
             for it in sc.scan_paths([p], recursive=rec_var.get()):
                 items.append(it)
         targ = Path(tgt_var.get() or '.')
+        sel_mode = mode_var.get()
         if by_var.get() == 'type':
-            return organizer.organize_by_type(items, targ, dry_run=True)
-        return organizer.organize_by_date(items, targ, dry_run=True)
+            return organizer.organize_by_type(items, targ, dry_run=True, mode=sel_mode)
+        return organizer.organize_by_date(items, targ, dry_run=True, mode=sel_mode)
 
     def do_organize_apply():
         # perform actual organize (non-dry)
@@ -307,9 +314,10 @@ def build_ui():
             for it in sc.scan_paths([p], recursive=rec_var.get()):
                 items.append(it)
         targ = Path(tgt_var.get() or '.')
+        sel_mode = mode_var.get()
         if by_var.get() == 'type':
-            return organizer.organize_by_type(items, targ, dry_run=False)
-        return organizer.organize_by_date(items, targ, dry_run=False)
+            return organizer.organize_by_type(items, targ, dry_run=False, mode=sel_mode)
+        return organizer.organize_by_date(items, targ, dry_run=False, mode=sel_mode)
 
     def on_organize_preview_done(ok, payload):
         # called after preview is ready
