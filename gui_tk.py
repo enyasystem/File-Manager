@@ -71,10 +71,46 @@ def build_ui():
     mode_var = tk.StringVar(value="move")
     mode_cb = ttk.Combobox(frm, textvariable=mode_var, values=["move", "copy", "hardlink", "index"], state="readonly", width=10)
     mode_cb.grid(row=3, column=3, sticky="w")
+    # Info / warning for selected mode
+    mode_info_var = tk.StringVar(value="")
+    mode_info_lbl = ttk.Label(frm, textvariable=mode_info_var, foreground="orange")
+    mode_info_lbl.grid(row=4, column=3, sticky='w')
+
+    def update_mode_info(*_):
+        sel = mode_var.get()
+        if sel == 'hardlink':
+            mode_info_var.set('Hardlinks may fail across devices; fallback to copy')
+        elif sel == 'index':
+            mode_info_var.set('Index mode: generates index files (backend pending)')
+        else:
+            mode_info_var.set('')
+
+    mode_var.trace_add('write', update_mode_info)
+    update_mode_info()
 
     # Buttons
     btn_frame = ttk.Frame(frm)
     btn_frame.grid(row=4, column=0, columnspan=3, pady=(8, 0), sticky="w")
+
+    # Preview controls: top-N and size buckets
+    top_n_var = tk.IntVar(value=10)
+    ttk.Label(frm, text="Top N:").grid(row=3, column=4, sticky='e')
+    top_spin = ttk.Spinbox(frm, from_=1, to=100, textvariable=top_n_var, width=5)
+    top_spin.grid(row=3, column=5, sticky='w')
+
+    ttk.Label(frm, text="Size buckets (MB):").grid(row=4, column=4, sticky='e')
+    small_mb_var = tk.IntVar(value=1)
+    medium_mb_var = tk.IntVar(value=10)
+    small_entry = ttk.Entry(frm, textvariable=small_mb_var, width=6)
+    small_entry.grid(row=4, column=5, sticky='w')
+    medium_entry = ttk.Entry(frm, textvariable=medium_mb_var, width=6)
+    medium_entry.grid(row=4, column=6, sticky='w')
+
+    # Date source for organize-by-date
+    date_src_var = tk.StringVar(value='ctime')
+    ttk.Label(frm, text='Date source:').grid(row=5, column=0, sticky='w')
+    date_cb = ttk.Combobox(frm, textvariable=date_src_var, values=['ctime', 'mtime', 'exif'], state='readonly', width=10)
+    date_cb.grid(row=5, column=1, sticky='w')
 
     out_text = tk.Text(frm, width=100, height=20)
     out_text.grid(row=5, column=0, columnspan=3, pady=(8, 0))
@@ -263,6 +299,52 @@ def build_ui():
         except Exception:
             txt.insert(tk.END, str(actions[:50]))
         txt.config(state='disabled')
+
+        # show top-N largest files (per-action) on the right
+        try:
+            from file_manager.utils import human_size
+            sizes = []
+            for a in actions:
+                p = None
+                if isinstance(a, dict):
+                    p = a.get('src') or a.get('path') or a.get('dst')
+                else:
+                    p = a
+                if not p:
+                    continue
+                try:
+                    sp = Path(p)
+                    if sp.exists() and sp.is_file():
+                        sizes.append((sp.stat().st_size, str(sp)))
+                except Exception:
+                    continue
+            sizes.sort(key=lambda x: x[0], reverse=True)
+            topn = sizes[:top_n_var.get() if isinstance(top_n_var.get(), int) else 10]
+            if topn:
+                lbl_top = ttk.Label(win, text=f"Largest {len(topn)} files:")
+                lbl_top.grid(row=2, column=1, sticky='nw', padx=8, pady=(0,8))
+                top_txt = tk.Text(win, width=60, height=min(15, len(topn)))
+                top_txt.grid(row=3, column=1, padx=8, pady=(0,8))
+                try:
+                    for sz, path in topn:
+                        top_txt.insert(tk.END, f"{human_size(sz):>8}  {path}\n")
+                except Exception:
+                    top_txt.insert(tk.END, str(topn))
+                top_txt.config(state='disabled')
+            # also show bucket counts using size thresholds from GUI
+            try:
+                small_mb = int(small_mb_var.get())
+                medium_mb = int(medium_mb_var.get())
+                small_thresh = small_mb * 1024 * 1024
+                medium_thresh = medium_mb * 1024 * 1024
+                small_count = sum(1 for s, _ in sizes if s <= small_thresh)
+                medium_count = sum(1 for s, _ in sizes if small_thresh < s <= medium_thresh)
+                large_count = sum(1 for s, _ in sizes if s > medium_thresh)
+                ttk.Label(win, text=f"Buckets (<= {small_mb}MB / {small_mb}-{medium_mb}MB / >{medium_mb}MB): {small_count} / {medium_count} / {large_count}").grid(row=4, column=1, sticky='w', padx=8)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
         confirm_var = tk.BooleanVar(value=False)
         chk = ttk.Checkbutton(win, text="I understand this will move files when applied", variable=confirm_var)
