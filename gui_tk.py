@@ -406,7 +406,10 @@ def build_ui():
             # parse extensions filter (optional)
             exts = [e.strip().lstrip('.') for e in (ext_var.get() or '').split(',') if e.strip()]
             exts = exts if exts else None
-            return organizer.organize_by_type(items, targ, dry_run=dry_var.get(), mode=sel_mode, extensions=exts)
+            import importlib
+            import file_manager.organizer_impl as impl
+            importlib.reload(impl)
+            return impl.organize_by_type(items, targ, dry_run=dry_var.get(), mode=sel_mode, extensions=exts)
         return organizer.organize_by_date(items, targ, dry_run=dry_var.get(), mode=sel_mode)
 
     # Preview/apply flow for organize: run a dry-run preview first, show modal,
@@ -430,10 +433,12 @@ def build_ui():
             ttk.Label(win, text=f"Mode: {sel_mode} - {msg}", wraplength=700).grid(row=0, column=1, sticky='w', padx=8, pady=(8,0))
         except Exception:
             pass
-        ttk.Label(win, text=f"Actions: {len(actions)}").grid(row=1, column=0, sticky='w', padx=8)
+        # filter out explicit 'skipped' actions so preview focuses on actionable items
+        actionable = [a for a in actions if not (isinstance(a, dict) and a.get('status') == 'skipped')]
+        ttk.Label(win, text=f"Actions: {len(actions)} (actionable: {len(actionable)})").grid(row=1, column=0, sticky='w', padx=8)
         try:
             from file_manager.utils import estimate_size, human_size
-            size_bytes = estimate_size(actions)
+            size_bytes = estimate_size(actionable)
             ttk.Label(win, text=f"Estimated disk usage: {human_size(size_bytes)}").grid(row=1, column=1, sticky='w', padx=8)
         except Exception:
             pass
@@ -441,16 +446,16 @@ def build_ui():
         txt = tk.Text(win, width=100, height=20)
         txt.grid(row=2, column=0, padx=8, pady=8)
         try:
-            txt.insert(tk.END, json.dumps(actions[:50], indent=2))
+            txt.insert(tk.END, json.dumps(actionable[:50], indent=2))
         except Exception:
-            txt.insert(tk.END, str(actions[:50]))
+            txt.insert(tk.END, str(actionable[:50]))
         txt.config(state='disabled')
 
         # show top-N largest files (per-action) on the right
         try:
             from file_manager.utils import human_size
             sizes = []
-            for a in actions:
+            for a in actionable:
                 p = None
                 if isinstance(a, dict):
                     p = a.get('src') or a.get('path') or a.get('dst')
@@ -550,7 +555,10 @@ def build_ui():
         if by_var.get() == 'type':
             exts = [e.strip().lstrip('.') for e in (ext_var.get() or '').split(',') if e.strip()]
             exts = exts if exts else None
-            return organizer.organize_by_type(items, targ, dry_run=True, mode=sel_mode, extensions=exts)
+            import importlib
+            import file_manager.organizer_impl as impl
+            importlib.reload(impl)
+            return impl.organize_by_type(items, targ, dry_run=True, mode=sel_mode, extensions=exts)
         return organizer.organize_by_date(
             items,
             targ,
@@ -586,7 +594,10 @@ def build_ui():
         if by_var.get() == 'type':
             exts = [e.strip().lstrip('.') for e in (ext_var.get() or '').split(',') if e.strip()]
             exts = exts if exts else None
-            return organizer.organize_by_type(items, targ, dry_run=False, mode=sel_mode, extensions=exts)
+            import importlib
+            import file_manager.organizer_impl as impl
+            importlib.reload(impl)
+            return impl.organize_by_type(items, targ, dry_run=False, mode=sel_mode, extensions=exts)
         return organizer.organize_by_date(
             items,
             targ,
