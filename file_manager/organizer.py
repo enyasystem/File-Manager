@@ -184,6 +184,11 @@ def organize_by_type(
 
         for f in files:
             src = Path(f["path"])
+            # only operate on files (skip directories)
+            if not src.exists() or not src.is_file():
+                _record_action(actions, src, target_root / src.name, status="skipped", reason="not-file", mode=mode)
+                continue
+
             ext = (f.get("ext") or src.suffix or "").lstrip('.').lower() or "unknown"
             dest_dir = target_root / ext
             dest = dest_dir / src.name
@@ -291,6 +296,11 @@ def organize_by_type(
 
             year = t.tm_year
             month_num = t.tm_mon
+
+            # skip non-files (avoid moving directories)
+            if not src.exists() or not src.is_file():
+                _record_action(actions, src, target_root / src.name, status="skipped", reason="not-file", mode=mode)
+                continue
 
             # size-bucket precedence
             if size_threshold_mb is not None:

@@ -17,9 +17,9 @@ def _run_background(fn, on_done, *args, **kwargs):
     def _worker():
         try:
             res = fn(*args, **kwargs)
-            root.after(0, lambda: on_done(True, res))
+            root.after(0, lambda _res=res: on_done(True, _res))
         except Exception as e:
-            root.after(0, lambda: on_done(False, str(e)))
+            root.after(0, lambda _err=str(e): on_done(False, _err))
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
@@ -59,8 +59,14 @@ def build_ui():
 
     dry_var = tk.BooleanVar(value=True)
     rec_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(frm, text="Dry run", variable=dry_var).grid(row=2, column=0, sticky="w")
-    ttk.Checkbutton(frm, text="Recursive", variable=rec_var).grid(row=2, column=1, sticky="w")
+    # place file-type selector below Target Root (left side)
+    ttk.Label(frm, text="File types (exts, comma-separated):").grid(row=2, column=0, sticky="w")
+    ext_var = tk.StringVar(value="")
+    ext_entry = ttk.Entry(frm, textvariable=ext_var, width=30)
+    ext_entry.grid(row=2, column=1, columnspan=1, sticky="w")
+    # move dry/run controls to the right so file-type appears under Target Root
+    ttk.Checkbutton(frm, text="Dry run", variable=dry_var).grid(row=2, column=2, sticky="w")
+    ttk.Checkbutton(frm, text="Recursive", variable=rec_var).grid(row=2, column=3, sticky="w")
 
     ttk.Label(frm, text="Organize by:").grid(row=3, column=0, sticky="w")
     by_var = tk.StringVar(value="type")
@@ -223,17 +229,31 @@ def build_ui():
     size_folder_entry = ttk.Entry(frm, textvariable=size_folder_var, width=20)
     size_folder_entry.grid(row=6, column=3, columnspan=2, sticky='w')
 
+    # Undo log file selector (explicit field) — user can pick the organizer JSON
+    undo_log_var = tk.StringVar(value='')
+    ttk.Label(frm, text='Undo log file:').grid(row=2, column=5, sticky='e')
+    undo_entry = ttk.Entry(frm, textvariable=undo_log_var, width=40)
+    undo_entry.grid(row=2, column=6, sticky='w')
+
+    def browse_undo():
+        p = filedialog.askopenfilename(filetypes=[('JSON files', '*.json'), ('All files', '*.*')])
+        if p:
+            undo_log_var.set(p)
+
+    ttk.Button(frm, text='Browse', command=browse_undo).grid(row=2, column=7)
+
+    # main output area moved down so it does not overlap date controls
     out_text = tk.Text(frm, width=100, height=20)
-    out_text.grid(row=5, column=0, columnspan=3, pady=(8, 0))
+    out_text.grid(row=8, column=0, columnspan=3, pady=(8, 0))
 
     progress = ttk.Progressbar(frm, mode='determinate', length=460)
-    progress.grid(row=6, column=0, columnspan=2, pady=(8, 0), sticky='w')
+    progress.grid(row=9, column=0, columnspan=2, pady=(8, 0), sticky='w')
     progress['value'] = 0
     progress['maximum'] = 100
 
     percent_var = tk.StringVar(value='')
     percent_label = ttk.Label(frm, textvariable=percent_var, width=6)
-    percent_label.grid(row=6, column=2, pady=(8, 0), sticky='w')
+    percent_label.grid(row=9, column=2, pady=(8, 0), sticky='w')
 
     buttons = []
 
@@ -383,7 +403,10 @@ def build_ui():
         targ = Path(tgt_var.get() or '.')
         sel_mode = mode_var.get()
         if by_var.get() == 'type':
-            return organizer.organize_by_type(items, targ, dry_run=dry_var.get(), mode=sel_mode)
+            # parse extensions filter (optional)
+            exts = [e.strip().lstrip('.') for e in (ext_var.get() or '').split(',') if e.strip()]
+            exts = exts if exts else None
+            return organizer.organize_by_type(items, targ, dry_run=dry_var.get(), mode=sel_mode, extensions=exts)
         return organizer.organize_by_date(items, targ, dry_run=dry_var.get(), mode=sel_mode)
 
     # Preview/apply flow for organize: run a dry-run preview first, show modal,
@@ -525,7 +548,9 @@ def build_ui():
         size_mb = int(size_mb_var.get()) if size_enable_var.get() else None
         size_folder = size_folder_var.get() if size_enable_var.get() else 'Large'
         if by_var.get() == 'type':
-            return organizer.organize_by_type(items, targ, dry_run=True, mode=sel_mode)
+            exts = [e.strip().lstrip('.') for e in (ext_var.get() or '').split(',') if e.strip()]
+            exts = exts if exts else None
+            return organizer.organize_by_type(items, targ, dry_run=True, mode=sel_mode, extensions=exts)
         return organizer.organize_by_date(
             items,
             targ,
@@ -559,7 +584,9 @@ def build_ui():
         size_mb = int(size_mb_var.get()) if size_enable_var.get() else None
         size_folder = size_folder_var.get() if size_enable_var.get() else 'Large'
         if by_var.get() == 'type':
-            return organizer.organize_by_type(items, targ, dry_run=False, mode=sel_mode)
+            exts = [e.strip().lstrip('.') for e in (ext_var.get() or '').split(',') if e.strip()]
+            exts = exts if exts else None
+            return organizer.organize_by_type(items, targ, dry_run=False, mode=sel_mode, extensions=exts)
         return organizer.organize_by_date(
             items,
             targ,
@@ -674,11 +701,23 @@ def build_ui():
 
     # Undo preview/apply flow
     def do_undo_preview():
-        logp = src_var.get().strip()
+        # prefer explicit undo log field; fallback to Source Paths
+        logp = undo_log_var.get().strip() or src_var.get().strip()
+        if not logp:
+            # prompt user
+            p = filedialog.askopenfilename(filetypes=[('JSON files', '*.json'), ('All files', '*.*')])
+            if not p:
+                return []
+            logp = p
         return organizer.undo_moves(Path(logp), dry_run=True)
 
     def do_undo_apply():
-        logp = src_var.get().strip()
+        logp = undo_log_var.get().strip() or src_var.get().strip()
+        if not logp:
+            p = filedialog.askopenfilename(filetypes=[('JSON files', '*.json'), ('All files', '*.*')])
+            if not p:
+                return []
+            logp = p
         return organizer.undo_moves(Path(logp), dry_run=False)
 
     def on_undo_preview_done(ok, payload):
@@ -698,7 +737,12 @@ def build_ui():
         _run_background(do_undo_apply, on_undo_done)
 
     def do_undo():
-        logp = src_var.get().strip()
+        logp = undo_log_var.get().strip() or src_var.get().strip()
+        if not logp:
+            p = filedialog.askopenfilename(filetypes=[('JSON files', '*.json'), ('All files', '*.*')])
+            if not p:
+                return []
+            logp = p
         return organizer.undo_moves(Path(logp), dry_run=dry_var.get())
 
     # buttons with wrappers that start progress and disable buttons while running
