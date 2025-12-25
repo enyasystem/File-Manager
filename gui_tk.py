@@ -1,8 +1,8 @@
 """Tkinter GUI frontend for the File-Manager tools (no external deps).
 
-This is a lightweight, dependency-free fallback UI that exposes basic
-Scan / Organize / Dedupe / Report / Undo actions using the existing
-`file_manager` package.
+Lightweight UI exposing Scan / Organize / Dedupe / Report / Undo actions
+from the `file_manager` package. Fixes: proper progress updates, button
+disable while tasks run, and scan results saved to the target folder.
 """
 import threading
 from pathlib import Path
@@ -10,6 +10,7 @@ import json
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from datetime import datetime
 
 
 def _run_background(fn, on_done, *args, **kwargs):
@@ -36,20 +37,24 @@ def build_ui():
     src_var = tk.StringVar()
     src_entry = ttk.Entry(frm, textvariable=src_var, width=80)
     src_entry.grid(row=0, column=1, sticky="ew")
+
     def browse_src():
         d = filedialog.askdirectory()
         if d:
             src_var.set(d)
+
     ttk.Button(frm, text="Browse", command=browse_src).grid(row=0, column=2)
 
     ttk.Label(frm, text="Target Root:").grid(row=1, column=0, sticky="w")
     tgt_var = tk.StringVar()
     tgt_entry = ttk.Entry(frm, textvariable=tgt_var, width=80)
     tgt_entry.grid(row=1, column=1, sticky="ew")
+
     def browse_tgt():
         d = filedialog.askdirectory()
         if d:
             tgt_var.set(d)
+
     ttk.Button(frm, text="Browse", command=browse_tgt).grid(row=1, column=2)
 
     dry_var = tk.BooleanVar(value=True)
@@ -64,15 +69,24 @@ def build_ui():
 
     # Buttons
     btn_frame = ttk.Frame(frm)
-    btn_frame.grid(row=4, column=0, columnspan=3, pady=(8,0), sticky="w")
+    btn_frame.grid(row=4, column=0, columnspan=3, pady=(8, 0), sticky="w")
 
     out_text = tk.Text(frm, width=100, height=20)
-    out_text.grid(row=5, column=0, columnspan=3, pady=(8,0))
+    out_text.grid(row=5, column=0, columnspan=3, pady=(8, 0))
 
     progress = ttk.Progressbar(frm, mode='determinate', length=500)
-    progress.grid(row=6, column=0, columnspan=3, pady=(8,0))
+    progress.grid(row=6, column=0, columnspan=3, pady=(8, 0))
     progress['value'] = 0
     progress['maximum'] = 100
+
+    buttons = []
+
+    def set_buttons_enabled(enabled: bool):
+        for b in buttons:
+            try:
+                b.config(state='normal' if enabled else 'disabled')
+            except Exception:
+                pass
 
     def append(msg):
         out_text.insert(tk.END, str(msg) + "\n")
@@ -81,24 +95,49 @@ def build_ui():
     # import backend lazily so module import is fast
     from file_manager import scanner, organizer, deduper, reporter
 
-    def on_scan_done(ok, payload):
+    def start_progress(mode='indeterminate', maximum=None):
+        try:
+            if mode == 'determinate' and maximum:
+                progress.config(mode='determinate', maximum=maximum)
+                progress['value'] = 0
+            else:
+                progress.config(mode='indeterminate')
+                progress.start(50)
+        except Exception:
+            pass
+
+    def stop_progress():
         try:
             progress.stop()
         except Exception:
             pass
-        try:
-            progress['value'] = 0
-        except Exception:
-            pass
+
+    def on_scan_done(ok, payload):
+        stop_progress()
+        set_buttons_enabled(True)
         if not ok:
             append(f"Scan error: {payload}")
             return
-        count = len(payload)
-        append(f"completed: {count} items")
+        items = payload
+        count = len(items)
+        append(f"Scan completed: {count} items")
         try:
-            append(json.dumps(payload[:5], indent=2))
+            append(json.dumps(items[:5], indent=2))
         except Exception:
             pass
+
+        # Save scan results to target folder if specified
+        try:
+            tgt = Path(tgt_var.get() or '.')
+            if not tgt.exists():
+                tgt.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+            outp = tgt / f'fm_scan_{stamp}.json'
+            with outp.open('w', encoding='utf-8') as f:
+                json.dump(items, f, indent=2)
+            append(f"Scan saved: {str(outp)}")
+        except Exception as e:
+            append(f"Failed to save scan: {e}")
 
     def do_scan():
         paths = [p.strip() for p in src_var.get().split(',') if p.strip()]
@@ -118,10 +157,9 @@ def build_ui():
 
         try:
             if total > 0:
-                root.after(0, lambda: progress.config(mode='determinate', maximum=total))
+                root.after(0, lambda: start_progress('determinate', maximum=total))
             else:
-                root.after(0, lambda: progress.config(mode='indeterminate'))
-                root.after(0, lambda: progress.start())
+                root.after(0, lambda: start_progress('indeterminate'))
         except Exception:
             pass
 
@@ -138,16 +176,28 @@ def build_ui():
         return items
 
     def on_organize_done(ok, payload):
-        progress = ttk.Progressbar(frm, mode='indeterminate', length=500)
-        progress.grid(row=6, column=0, columnspan=3, pady=(8,0))
+        stop_progress()
+        set_buttons_enabled(True)
         if not ok:
             append(f"Organize error: {payload}")
             return
-        append(f"Organize completed: {len(payload)} actions")
         try:
-            append(json.dumps(payload[:10], indent=2))
+            # payload is a list of actions; last entry may be a log path
+            if isinstance(payload, list) and payload and isinstance(payload[-1], dict) and 'log' in payload[-1]:
+                logp = payload[-1]['log']
+                append(f"Organize completed: {len(payload)-1} actions; log: {logp}")
+                try:
+                    append(json.dumps(payload[:-1][:10], indent=2))
+                except Exception:
+                    pass
+            else:
+                append(f"Organize completed: {len(payload)} actions")
+                try:
+                    append(json.dumps(payload[:10], indent=2))
+                except Exception:
+                    pass
         except Exception:
-            pass
+            append(str(payload))
 
     def do_organize():
         from file_manager import scanner as sc
@@ -162,6 +212,8 @@ def build_ui():
         return organizer.organize_by_date(items, targ, dry_run=dry_var.get())
 
     def on_dedupe_done(ok, payload):
+        stop_progress()
+        set_buttons_enabled(True)
         if not ok:
             append(f"Dedupe error: {payload}")
             return
@@ -178,6 +230,8 @@ def build_ui():
         return deduper.find_duplicates(paths)
 
     def on_report_done(ok, payload):
+        stop_progress()
+        set_buttons_enabled(True)
         if not ok:
             append(f"Report error: {payload}")
             return
@@ -195,6 +249,8 @@ def build_ui():
         return 'No valid scan.json provided'
 
     def on_undo_done(ok, payload):
+        stop_progress()
+        set_buttons_enabled(True)
         if not ok:
             append(f"Undo error: {payload}")
             return
@@ -208,11 +264,19 @@ def build_ui():
         logp = src_var.get().strip()
         return organizer.undo_moves(Path(logp), dry_run=dry_var.get())
 
-    ttk.Button(btn_frame, text="Scan", command=lambda: _run_background(do_scan, on_scan_done)).grid(row=0, column=0)
-    ttk.Button(btn_frame, text="Organize", command=lambda: _run_background(do_organize, on_organize_done)).grid(row=0, column=1)
-    ttk.Button(btn_frame, text="Dedupe", command=lambda: _run_background(do_dedupe, on_dedupe_done)).grid(row=0, column=2)
-    ttk.Button(btn_frame, text="Report", command=lambda: _run_background(do_report, on_report_done)).grid(row=0, column=3)
-    ttk.Button(btn_frame, text="Undo", command=lambda: _run_background(do_undo, on_undo_done)).grid(row=0, column=4)
+    # buttons with wrappers that start progress and disable buttons while running
+    b_scan = ttk.Button(btn_frame, text="Scan", command=lambda: (set_buttons_enabled(False), _run_background(do_scan, on_scan_done)))
+    b_scan.grid(row=0, column=0)
+    b_org = ttk.Button(btn_frame, text="Organize", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_organize, on_organize_done)))
+    b_org.grid(row=0, column=1)
+    b_ded = ttk.Button(btn_frame, text="Dedupe", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_dedupe, on_dedupe_done)))
+    b_ded.grid(row=0, column=2)
+    b_rep = ttk.Button(btn_frame, text="Report", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_report, on_report_done)))
+    b_rep.grid(row=0, column=3)
+    b_undo = ttk.Button(btn_frame, text="Undo", command=lambda: (set_buttons_enabled(False), start_progress('indeterminate'), _run_background(do_undo, on_undo_done)))
+    b_undo.grid(row=0, column=4)
+
+    buttons.extend([b_scan, b_org, b_ded, b_rep, b_undo])
 
     return root
 
