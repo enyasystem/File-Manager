@@ -83,6 +83,11 @@ def main():
     p_org.add_argument("--no-recursive", action="store_true")
     p_org.set_defaults(func=cmd_organize)
 
+    p_undo = sub.add_parser("undo")
+    p_undo.add_argument("log", help="Path to an organizer log JSON file to undo")
+    p_undo.add_argument("--dry-run", action="store_true")
+    p_undo.set_defaults(func=lambda args: print('\n'.join(str(x) for x in organizer.undo_moves(Path(args.log), dry_run=args.dry_run))))
+
     p_dup = sub.add_parser("dedupe")
     p_dup.add_argument("paths", nargs="+", help="Paths to scan for duplicates")
     p_dup.add_argument("--algo", choices=("md5", "sha256"), default="sha256")
