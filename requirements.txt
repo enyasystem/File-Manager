@@ -1,3 +1,10 @@
+pyinstaller>=6.0
+PySimpleGUI>=4.0
+Pillow>=9.0.0
+mutagen>=1.45
+
+# Optional for tests / dev
+pytest>=7.0
 pyinstaller
 PySimpleGUI
 Pillow

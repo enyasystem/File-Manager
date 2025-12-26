@@ -103,3 +103,52 @@ Contributing and next steps
 License
 
 This project is provided as-is. Add licensing information as appropriate for your use.
+
+Requirements
+
+- Runtime: `Pillow` is required for EXIF/date-based organization. Install with:
+
+```bash
+pip install -r requirements.txt
+```
+
+- Development / optional tools: `PyInstaller` is used to create the standalone executable (see Build section). `pytest` is recommended for adding tests.
+
+Building the executable
+
+You can produce a single-file Windows executable using PyInstaller (this repository includes a built example under `dist/` when available):
+
+```bash
+python -m pip install --user pyinstaller
+python -m PyInstaller --onefile --windowed --name FileManagerApp gui_tk.py
+# result: dist/FileManagerApp.exe
+```
+
+Notes:
+- Use `--windowed` to hide the console; omit it if you want a console for logs.
+- To include icons or extra data, update the generated `.spec` file and re-run PyInstaller.
+
+Troubleshooting
+
+- If the GUI shows unexpected behavior after you edited code, restart the GUI/python process (stale imports can persist in long-lived interpreters). The GUI also reloads the authoritative organizer implementation before running organize-by-type.
+- Missing EXIF behavior: ensure `Pillow` is installed.
+- If the PyInstaller-built EXE fails to find resources, add them to the `.spec` or pass `--add-data` during the build.
+
+Undo log example
+
+After a non-dry run the organizer writes a JSON undo log into the target root named like `fm_organize_YYYYMMDDT...json`. Example usage:
+
+```bash
+# revert actions recorded in the log
+python cli.py undo C:\path\to\target\fm_organize_20251225T181200Z.json
+```
+
+Contributing, CI & Tests
+
+- Run the small validation script:
+
+```bash
+python tests/validate_app.py
+```
+
+- Recommended additions: a `pytest` suite and a CI workflow that runs linting and tests on PRs.
