@@ -62,6 +62,13 @@ python gui_tk.py
 	- The preview modal shows an estimated disk usage and the top-N largest files. Preview is required before applying.
 	- Keep `Dry run` enabled while experimenting.
 
+Screenshot
+
+Below is a screenshot of the GUI preview. 
+
+![File Manager GUI screenshot](assets/screenshot.png)
+
+
 Mode semantics and safety
 
 - `move`: physically move files into the target folders. Undo will attempt to move them back (collision-safe restored names are created when necessary).
